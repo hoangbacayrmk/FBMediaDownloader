@@ -1,32 +1,6 @@
 import fetch from "node-fetch";
-import https from "https";
 import fs from "fs";
-import { FB_API_HOST } from "./constants.js";
-import { ACCESS_TOKEN } from "../config.js";
 import { log } from "./logger.js";
-
-// Dùng FB API lấy link hình ảnh có độ phân giải lớn nhất từ id ảnh truyền vào
-// Trả về undefined nếu không tìm thấy
-export const getLargestPhotoLink = async (photo_id) => {
-  let url = `${FB_API_HOST}/${photo_id}?fields=largest_image&access_token=${ACCESS_TOKEN}`;
-  const json = await myFetch(url);
-  return json?.largest_image?.source;
-};
-
-export const myFetch = async (_url) => {
-  try {
-    const response = await fetch(_url);
-    const json = await response.json();
-    if (json.error) {
-      log("[!] ERROR", JSON.stringify(json, null, 4));
-      return null;
-    }
-    return json;
-  } catch (e) {
-    log("[!] ERROR", e.toString());
-    return null;
-  }
-};
 
 export const sleep = (ms) => {
   return new Promise((resolve) => {
@@ -55,18 +29,21 @@ export const saveToFile = (fileName, data, override = false) => {
   }
 };
 
-export const download = (url, destination) =>
-  new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destination);
-    https
-      .get(url, (response) => {
-        response.pipe(file);
-        file.on("finish", () => {
-          file.close(resolve(true));
-        });
-      })
-      .on("error", (error) => {
-        fs.unlinkSync(destination);
-        reject(error.message);
-      });
+export const download = async (url, destination) => {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
   });
+  if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  
+  // Kiểm tra nếu file quá nhỏ (dưới 10KB) thì có khả năng là file lỗi hoặc DASH fragment
+  if (buffer.length < 10240 && url.includes("fbcdn.net")) {
+    throw new Error("Downloaded file is too small (possibly an invalid fragment).");
+  }
+
+  fs.writeFileSync(destination, buffer);
+  return true;
+};

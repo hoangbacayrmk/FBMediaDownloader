@@ -1,2 +1,7 @@
 node_modules/
 downloads/
+chrome_profile/
+.DS_Store
+*.log
+package-lock.json
+yarn.lock
