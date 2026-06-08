@@ -1,34 +1,34 @@
 @echo off
 chcp 65001 > nul
 echo =======================================================
-echo 🚀 ĐANG ĐỒNG BỘ MÃ NGUỒN LÊN GITHUB CỦA ANH...
+echo DANG DONG BO MA NGUON LEN GITHUB CUA ANH...
 echo =======================================================
 echo.
 
-:: Kiểm tra trạng thái Git
-echo 🔍 Trạng thái các file thay đổi:
+:: Kiem tra trang thai Git
+echo Trang thai cac file thay doi:
 git status -s
 echo.
 
-:: Nhập thông tin ghi chú
-set "commit_msg=Cập nhật mã nguồn tự động %date% %time%"
-set /p user_msg="✍️ Nhập ghi chú thay đổi (Ấn Enter để dùng mặc định): "
+:: Nhap thong tin ghi chu
+set "commit_msg=Cap nhat ma nguon tu dong %date% %time%"
+set /p user_msg="Nhap ghi chu thay doi (An Enter de dung mac dinh): "
 if not "%user_msg%"=="" (
     set "commit_msg=%user_msg%"
 )
 
 echo.
-echo 📦 1. Đang thêm các thay đổi vào Git...
+echo 1. Dang them cac thay doi vao Git...
 git add .
 
-echo 💾 2. Đang lưu bản thay đổi (Commit)...
+echo 2. Dang luu ban thay doi (Commit)...
 git commit -m "%commit_msg%"
 
-echo 📤 3. Đang đẩy lên GitHub của anh (Push)...
+echo 3. Dang day len GitHub cua anh (Push)...
 git push origin master
 
 echo.
 echo =======================================================
-echo ✅ TIẾN TRÌNH HOÀN TẤT!
+echo TIEN TRINH HOAN TAT!
 echo =======================================================
 pause
