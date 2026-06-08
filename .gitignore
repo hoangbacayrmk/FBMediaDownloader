@@ -5,3 +5,7 @@ chrome_profile/
 *.log
 package-lock.json
 yarn.lock
+.env
+.env.local
+.env.*
+setup_git.bat
