@@ -2,11 +2,13 @@ import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
 import { download, createIfNotExistDir, sleep, saveToFile } from "./scripts/utils.js";
 import { processVideo } from "./Skill/editor.js";
 import { rewriteCaption } from "./Skill/rewriter.js";
 import { schedulePost } from "./Skill/scheduler.js";
 
+dotenv.config();
 puppeteer.use(StealthPlugin());
 
 const args = process.argv.slice(2);
@@ -14,10 +16,35 @@ const targetUrl = args.indexOf("--url") !== -1 ? args[args.indexOf("--url") + 1]
 const isEditMode = args.includes("--edit");
 const isRewriteMode = args.includes("--rewrite");
 const uploadPageName = args.indexOf("--upload") !== -1 ? args[args.indexOf("--upload") + 1] : null;
+// Tham số cắt video linh hoạt (fallback về .env, rồi về 1 giây)
+const trimStart = args.indexOf("--trim-start") !== -1 ? parseFloat(args[args.indexOf("--trim-start") + 1]) : undefined;
+const trimEnd   = args.indexOf("--trim-end")   !== -1 ? parseFloat(args[args.indexOf("--trim-end") + 1])   : undefined;
 
 const PROFILE_DIR = "./chrome_profile";
 const SAVE_DIR = "downloads/reels_download";
+// File manifest lưu danh sách URL đã tải (chống trùng lặp)
+const MANIFEST_FILE = "downloads/downloaded_urls.json";
 
+/**
+ * Đọc manifest danh sách URL đã tải
+ */
+function loadManifest() {
+  if (!fs.existsSync(MANIFEST_FILE)) return new Set();
+  try {
+    const data = JSON.parse(fs.readFileSync(MANIFEST_FILE, "utf-8"));
+    return new Set(data);
+  } catch { return new Set(); }
+}
+
+/**
+ * Lưu một URL mới vào manifest
+ */
+function saveToManifest(downloadedSet, url) {
+  downloadedSet.add(url);
+  const dir = path.dirname(MANIFEST_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(MANIFEST_FILE, JSON.stringify([...downloadedSet], null, 2));
+}
 
 async function launchBrowser() {
   const chromePaths = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"];
@@ -96,8 +123,8 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
       if (isEditMode) {
         try {
           finalVideoPath = await processVideo(videoPath, { 
-            trimStart: 1, // Cắt 1s đầu
-            trimEnd: 1,   // Cắt 1s đuôi
+            trimStart,   // Lấy từ --trim-start hoặc .env
+            trimEnd,     // Lấy từ --trim-end hoặc .env
             deleteOriginal: true 
           });
         } catch (e) { console.error("⚠️ Không thể chỉnh sửa video này."); }
@@ -162,12 +189,26 @@ async function handleDownload(inputUrl) {
     } catch(e) {}
 
     let postIndex = 0;
-    for (const link of linksArray) { 
-      await extractAndDownloadMobile(page, link, path.join(SAVE_DIR, pageName), postIndex); 
+    const downloadedSet = loadManifest();
+    const newLinks = linksArray.filter(link => !downloadedSet.has(link));
+    const skipped = linksArray.length - newLinks.length;
+    if (skipped > 0) console.log(`⏭️ Bỏ qua ${skipped} video đã tải trước đó.`);
+    console.log(`🚀 Tải ${newLinks.length} video mới (Edit: ${isEditMode}, Rewrite: ${isRewriteMode})...`);
+    
+    for (const link of newLinks) { 
+      const success = await extractAndDownloadMobile(page, link, path.join(SAVE_DIR, pageName), postIndex);
+      if (success) saveToManifest(downloadedSet, link);
       postIndex++;
     }
   } else {
-    await extractAndDownloadMobile(page, finalUrl, SAVE_DIR, 0);
+    const downloadedSet = loadManifest();
+    const cleanUrl = finalUrl.split('?')[0];
+    if (downloadedSet.has(cleanUrl)) {
+      console.log(`⏭️ Video này đã được tải trước đó. Bỏ qua.`);
+    } else {
+      const success = await extractAndDownloadMobile(page, finalUrl, SAVE_DIR, 0);
+      if (success) saveToManifest(downloadedSet, cleanUrl);
+    }
   }
   
   console.log("🛑 (Chế độ Học Việc): Không tự động đóng trình duyệt để anh thao tác tiếp.");

@@ -5,7 +5,12 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "sync": "git add . && git commit -m \"Auto-sync code\" && git push origin master"
+    "start": "node chat_downloader.js",
+    "download": "node chat_downloader.js",
+    "rewrite-all": "node scripts/batch_rewrite.js",
+    "login": "node scripts/open_browser.js",
+    "composer": "node scripts/open_composer.js",
+    "sync": "node sync.js"
   },
   "type": "module",
   "keywords": [],
