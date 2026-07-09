@@ -1,20 +1,25 @@
 {
   "name": "FBMediaDownloader",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "1.1.0",
+  "description": "Công cụ tự động tải video Reels từ Facebook, kèm auto-edit (FFmpeg) và AI rewrite caption (Gemini).",
+  "main": "chat_downloader.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node chat_downloader.js",
     "download": "node chat_downloader.js",
+    "help": "node chat_downloader.js --help",
     "rewrite-all": "node scripts/batch_rewrite.js",
     "login": "node scripts/open_browser.js",
     "composer": "node scripts/open_composer.js",
-    "sync": "node sync.js"
+    "sync": "node sync.js",
+    "validate": "node -e \"const fs=require('fs'); if(!fs.existsSync('.env')){console.error('❌ File .env chưa tồn tại! Chạy: copy .env.example .env');process.exit(1)}else{console.log('✅ File .env OK')}\""
   },
   "type": "module",
-  "keywords": [],
-  "author": "",
+  "keywords": ["facebook", "reels", "downloader", "automation", "puppeteer"],
+  "author": "hoangbacayrmk",
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

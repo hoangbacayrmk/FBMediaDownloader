@@ -8,4 +8,5 @@ yarn.lock
 .env
 .env.local
 .env.*
+!.env.example
 setup_git.bat

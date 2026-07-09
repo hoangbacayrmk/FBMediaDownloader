@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -34,11 +34,32 @@ if (!TOKEN || TOKEN === "your_github_token_here") {
 // Lấy commit message từ tham số CLI, hoặc dùng mặc định
 const commitMsg = process.argv.slice(2).join(" ") || `Cập nhật: ${new Date().toLocaleString("vi-VN")}`;
 
-try {
-  // Cập nhật remote URL với token
-  const remoteUrl = `https://${USERNAME}:${TOKEN}@github.com/${USERNAME}/${REPO}.git`;
-  execSync(`git remote set-url origin "${remoteUrl}"`, { stdio: "pipe" });
+// Remote URLs
+const remoteWithToken = `https://${USERNAME}:${TOKEN}@github.com/${USERNAME}/${REPO}.git`;
+const remoteClean     = `https://github.com/${USERNAME}/${REPO}.git`;
 
+/**
+ * Dọn dẹp remote URL — xóa token khỏi remote để không bị lộ khi chạy `git remote -v`.
+ */
+function cleanupRemote() {
+  try {
+    execSync(`git remote set-url origin "${remoteClean}"`, { stdio: "pipe" });
+  } catch {
+    // Bỏ qua lỗi cleanup
+  }
+}
+
+try {
+  // Bước 0: Kiểm tra có đang trong Git repo không
+  try {
+    execSync("git rev-parse --git-dir", { stdio: "pipe" });
+  } catch {
+    console.error("❌ Thư mục hiện tại không phải Git repository!");
+    console.error("   👉 Chạy: git init && git remote add origin ...");
+    process.exit(1);
+  }
+
+  // Bước 1: Kiểm tra thay đổi TRƯỚC khi set token vào remote
   console.log("📦 Đang kiểm tra thay đổi...");
   const status = execSync("git status -s").toString().trim();
 
@@ -48,16 +69,29 @@ try {
   }
 
   console.log("📝 Các file thay đổi:\n" + status);
-  
-  execSync("git add .", { stdio: "inherit" });
-  execSync(`git commit -m "${commitMsg}"`, { stdio: "inherit" });
 
+  // Bước 2: Stage & Commit (chưa cần token)
+  execSync("git add .", { stdio: "inherit" });
+  
+  // Dùng execFileSync để tránh command injection từ commit message
+  execFileSync("git", ["commit", "-m", commitMsg], { stdio: "inherit" });
+
+  // Bước 3: Set token vào remote → Push → Dọn dẹp token ngay
   console.log("🚀 Đang đẩy lên GitHub...");
-  execSync("git push origin master", { stdio: "inherit" });
+  execSync(`git remote set-url origin "${remoteWithToken}"`, { stdio: "pipe" });
+  
+  try {
+    execSync("git push origin master", { stdio: "inherit" });
+  } finally {
+    // LUÔN dọn dẹp token khỏi remote, dù push thành công hay thất bại
+    cleanupRemote();
+  }
 
   console.log("\n✅ Đồng bộ thành công!");
   console.log(`🔗 https://github.com/${USERNAME}/${REPO}`);
 } catch (err) {
+  // Đảm bảo dọn dẹp token dù có lỗi
+  cleanupRemote();
   console.error("❌ Lỗi khi đồng bộ:", err.message);
   process.exit(1);
 }

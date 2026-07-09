@@ -1,8 +1,11 @@
 @echo off
 chcp 65001 > nul
 echo =======================================================
-echo DANG DONG BO MA NGUON LEN GITHUB CUA ANH...
+echo    DONG BO MA NGUON LEN GITHUB
 echo =======================================================
+echo.
+echo Luu y: Nen dung "npm run sync" thay vi file .bat nay
+echo        de dam bao token duoc bao ve an toan.
 echo.
 
 :: Kiem tra trang thai Git
@@ -10,25 +13,34 @@ echo Trang thai cac file thay doi:
 git status -s
 echo.
 
-:: Nhap thong tin ghi chu
-set "commit_msg=Cap nhat ma nguon tu dong %date% %time%"
-set /p user_msg="Nhap ghi chu thay doi (An Enter de dung mac dinh): "
-if not "%user_msg%"=="" (
-    set "commit_msg=%user_msg%"
+:: Kiem tra co thay doi khong
+git diff --quiet --cached 2>nul
+git diff --quiet 2>nul
+for /f %%i in ('git status -s') do (
+    goto HAS_CHANGES
 )
+echo Khong co thay doi gi moi. Thoat.
+goto END
 
-echo.
+:HAS_CHANGES
+:: Stage va commit
 echo 1. Dang them cac thay doi vao Git...
 git add .
 
 echo 2. Dang luu ban thay doi (Commit)...
-git commit -m "%commit_msg%"
+:: Dung ngay gio lam commit message mac dinh (tranh injection tu user input)
+git commit -m "Cap nhat: %date% %time:~0,8%"
 
-echo 3. Dang day len GitHub cua anh (Push)...
+echo 3. Dang day len GitHub...
+:: Luu y: Can npm run sync de co token authentication
+:: Neu push truc tiep bang bat, can cau hinh credential helper truoc:
+::   git config --global credential.helper manager
 git push origin master
 
 echo.
 echo =======================================================
-echo TIEN TRINH HOAN TAT!
+echo HOAN TAT!
 echo =======================================================
+
+:END
 pause
