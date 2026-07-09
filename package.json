@@ -10,15 +10,24 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node chat_downloader.js",
     "download": "node chat_downloader.js",
+    "auto": "node chat_downloader.js --music --headless --url",
     "help": "node chat_downloader.js --help",
     "rewrite-all": "node scripts/batch_rewrite.js",
     "login": "node scripts/open_browser.js",
+    "login-auto": "node -e \"import('./scripts/browser_config.js').then(c => c.launchBrowser({headless: false}).then(b => b.newPage().then(p => import('./scripts/auto_login.js').then(m => m.ensureLoggedIn(p).then(()=> {console.log('✅ XONG! Giữ browser thêm 30s'); setTimeout(()=>b.close(), 30000)})))))\"",
+    "get-music": "node scripts/download_music.js",
     "composer": "node scripts/open_composer.js",
     "sync": "node sync.js",
     "validate": "node -e \"const fs=require('fs'); if(!fs.existsSync('.env')){console.error('❌ File .env chưa tồn tại! Chạy: copy .env.example .env');process.exit(1)}else{console.log('✅ File .env OK')}\""
   },
   "type": "module",
-  "keywords": ["facebook", "reels", "downloader", "automation", "puppeteer"],
+  "keywords": [
+    "facebook",
+    "reels",
+    "downloader",
+    "automation",
+    "puppeteer"
+  ],
   "author": "hoangbacayrmk",
   "license": "ISC",
   "dependencies": {
@@ -28,6 +37,7 @@
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "^2.1.3",
     "node-fetch": "^3.0.0",
+    "otpauth": "^9.5.1",
     "puppeteer": "^24.43.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"

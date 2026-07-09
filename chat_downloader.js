@@ -1,11 +1,15 @@
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
+import { spawn } from "child_process";
+import ffmpegInstaller from "ffmpeg-static";
 import { download, createIfNotExistDir, sleep, saveToFile } from "./scripts/utils.js";
 import { processVideo } from "./Skill/editor.js";
 import { rewriteCaption } from "./Skill/rewriter.js";
 import { schedulePost } from "./Skill/scheduler.js";
 import { launchBrowser, registerGracefulShutdown } from "./scripts/browser_config.js";
+import { ensureLoggedIn } from "./scripts/auto_login.js";
+import { ensureYtDlp } from "./scripts/download_music.js";
 
 dotenv.config();
 
@@ -48,6 +52,7 @@ function showHelp() {
 🎬 Tùy chọn:
   --url <link>          Link Facebook (bắt buộc)
   --edit                Tự động cắt đầu/cuối video
+  --music               Ghép ngẫu nhiên nhạc trẻ không bản quyền thay âm gốc
   --rewrite             Viết lại caption bằng Gemini AI
   --upload <page_id>    (Tạm tắt) ID Fanpage để upload
   --trim-start <giây>   Số giây cắt đầu (mặc định: ${process.env.DEFAULT_TRIM_START || 1})
@@ -72,6 +77,7 @@ if (flags.has("help")) {
 const targetUrl     = params["url"] || null;
 const isEditMode    = flags.has("edit");
 const isRewriteMode = flags.has("rewrite");
+const isMusicMode   = flags.has("music");
 const uploadPageName = params["upload"] || null;
 const noClose       = flags.has("no-close");
 const headless      = flags.has("headless");
@@ -188,6 +194,56 @@ async function extractCaption(page) {
 //  Core Download Logic
 // ============================================================
 
+async function downloadSingleMusic() {
+  const NCS_MUSIC_LINKS = [
+    "https://www.youtube.com/watch?v=K4DyBUG242c", // Cartoon - On & On
+    "https://www.youtube.com/watch?v=AOeY-nDp7hI", // Alan Walker - Fade
+    "https://www.youtube.com/watch?v=bM7SZ5SBzyY", // Elektronomia - Sky High
+    "https://www.youtube.com/watch?v=3nQNiWdeH2Q", // Janji - Heroes Tonight
+    "https://www.youtube.com/watch?v=J2X5mJ3HDYE", // DEAF KEV - Invincible
+    "https://www.youtube.com/watch?v=TW9d8vYrVFQ", // Tobu - Hope
+    "https://www.youtube.com/watch?v=vtHGESuQ22s"  // Disfigure - Blank
+  ];
+  const url = NCS_MUSIC_LINKS[Math.floor(Math.random() * NCS_MUSIC_LINKS.length)];
+  const binDir = "./bin";
+  const ytdlpPath = path.join(binDir, "yt-dlp.exe");
+  const musicDir = "./assets/temp_music";
+  createIfNotExistDir(musicDir);
+
+  const outputPath = path.join(musicDir, `temp_${Date.now()}.mp3`);
+
+  return new Promise(async (resolve) => {
+    // Tự động tải yt-dlp.exe nếu user mới clone code về chưa có
+    await ensureYtDlp();
+
+    if (!fs.existsSync(ytdlpPath)) {
+      console.log("⚠️ Không thể tải yt-dlp.exe, bỏ qua tải nhạc song song...");
+      return resolve(null);
+    }
+
+    console.log(`🎵 [Tiến trình song song] Đang tải 1 bài nhạc NCS ngẫu nhiên từ Youtube...`);
+    
+    const ytdlp = spawn(ytdlpPath, [
+      "-x",
+      "--audio-format", "mp3",
+      "--audio-quality", "0",
+      "--ffmpeg-location", ffmpegInstaller,
+      "-o", outputPath,
+      url
+    ], { shell: false });
+
+    ytdlp.on('close', (code) => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        console.log(`✅ [Tiến trình song song] Đã tải nhạc nền xong! Sẵn sàng chèn vào video.`);
+        resolve(outputPath);
+      } else {
+        console.log(`❌ [Tiến trình song song] Lỗi tải nhạc, sẽ dùng nhạc lấy từ kho assets/bg_music...`);
+        resolve(null);
+      }
+    });
+  });
+}
+
 async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, postIndex = 0) {
   console.log(`\n🌐 Đang xử lý: ${url}`);
   try {
@@ -226,7 +282,7 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
       createIfNotExistDir(videoFolder);
 
       const videoPath = path.join(videoFolder, `${baseName}.mp4`);
-      // Chạy song song: tải video + viết lại caption
+      // Chạy song song: tải video + viết lại caption + tải nhạc
       const downloadPromise = download(videoUrl, videoPath);
 
       let rewritePromise = Promise.resolve(caption);
@@ -234,22 +290,35 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
         rewritePromise = rewriteCaption(caption);
       }
 
-      // Chờ cả 2 tiến trình hoàn thành
+      let musicPromise = Promise.resolve(null);
+      if (isMusicMode) {
+        musicPromise = downloadSingleMusic();
+      }
+
+      // Chờ tất cả 3 tiến trình hoàn thành
       await downloadPromise;
       const finalCaption = await rewritePromise;
+      const downloadedMusicPath = await musicPromise;
 
       if (finalCaption && finalCaption.length > 3) {
         saveToFile(path.join(videoFolder, `${baseName}.txt`), finalCaption, true);
       }
 
       let finalVideoPath = videoPath;
-      if (isEditMode) {
+      if (isEditMode || isMusicMode) {
         try {
           finalVideoPath = await processVideo(videoPath, {
             trimStart, // Lấy từ --trim-start hoặc .env
             trimEnd, // Lấy từ --trim-end hoặc .env
             deleteOriginal: true,
+            addMusic: isMusicMode,
+            musicFilePath: downloadedMusicPath
           });
+
+          // Dọn dẹp file nhạc tạm sau khi đã ghép xong
+          if (downloadedMusicPath && fs.existsSync(downloadedMusicPath)) {
+            fs.unlinkSync(downloadedMusicPath);
+          }
         } catch (e) {
           console.error("⚠️ Không thể chỉnh sửa video này:", e.message);
         }
@@ -289,12 +358,16 @@ async function handleDownload(inputUrl) {
 
   const page = await browser.newPage();
 
+  // Đảm bảo đã đăng nhập trước khi tải (sẽ tự động đăng nhập nếu chưa)
+  await ensureLoggedIn(page);
+
   // Hiển thị config summary
   console.log("\n╔══════════════════════════════════════════╗");
   console.log("║        FB Media Downloader v1.1          ║");
   console.log("╠══════════════════════════════════════════╣");
   console.log(`║ 🔗 URL: ${inputUrl.substring(0, 33).padEnd(33)}║`);
   console.log(`║ ✂️  Edit: ${String(isEditMode).padEnd(31)}║`);
+  console.log(`║ 🎵 Music: ${String(isMusicMode).padEnd(30)}║`);
   console.log(`║ ✍️  Rewrite: ${String(isRewriteMode).padEnd(28)}║`);
   console.log(`║ 🖥️  Headless: ${String(headless).padEnd(27)}║`);
   console.log("╚══════════════════════════════════════════╝\n");

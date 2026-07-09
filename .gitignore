@@ -10,3 +10,8 @@ yarn.lock
 .env.*
 !.env.example
 setup_git.bat
+
+# Media and binaries
+assets/bg_music/
+assets/temp_music/
+bin/
