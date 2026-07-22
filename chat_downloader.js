@@ -10,6 +10,8 @@ import { schedulePost } from "./Skill/scheduler.js";
 import { launchBrowser, registerGracefulShutdown } from "./scripts/browser_config.js";
 import { ensureLoggedIn } from "./scripts/auto_login.js";
 import { ensureYtDlp } from "./scripts/download_music.js";
+import { extractCaption } from "./scripts/pageHelpers.js";
+import { handlePhotoDownload } from "./Skill/photoDownloader.js";
 
 dotenv.config();
 
@@ -46,13 +48,17 @@ function showHelp() {
 📥 Tải 1 video:
   node chat_downloader.js --url "https://www.facebook.com/reel/123..."
 
-📂 Tải hàng loạt (từ Profile/Page):
+📂 Tải hàng loạt Reels (từ Profile/Page):
   node chat_downloader.js --url "https://www.facebook.com/pagename"
+
+🖼️ Tải hàng loạt bài viết ẢNH (từ Profile/Page, chế độ song song với Reels):
+  node chat_downloader.js --url "https://www.facebook.com/pagename" --photos
 
 🎬 Tùy chọn:
   --url <link>          Link Facebook (bắt buộc)
-  --edit                Tự động cắt đầu/cuối video
-  --music               Ghép ngẫu nhiên nhạc trẻ không bản quyền thay âm gốc
+  --photos              Chuyển sang chế độ quét & tải bài viết ẢNH thay vì Reels
+  --edit                Tự động cắt đầu/cuối video (chỉ áp dụng chế độ Reels)
+  --music               Ghép ngẫu nhiên nhạc trẻ không bản quyền thay âm gốc (chỉ Reels)
   --rewrite             Viết lại caption bằng Gemini AI
   --upload <page_id>    (Tạm tắt) ID Fanpage để upload
   --trim-start <giây>   Số giây cắt đầu (mặc định: ${process.env.DEFAULT_TRIM_START || 1})
@@ -63,6 +69,7 @@ function showHelp() {
 
 💡 Kết hợp nhiều tùy chọn:
   node chat_downloader.js --url "LINK" --edit --rewrite --trim-start 2
+  node chat_downloader.js --url "LINK" --photos --rewrite
 `);
 }
 
@@ -78,6 +85,7 @@ const targetUrl     = params["url"] || null;
 const isEditMode    = flags.has("edit");
 const isRewriteMode = flags.has("rewrite");
 const isMusicMode   = flags.has("music");
+const isPhotoMode   = flags.has("photos");
 const uploadPageName = params["upload"] || null;
 const noClose       = flags.has("no-close");
 const headless      = flags.has("headless");
@@ -139,55 +147,6 @@ function saveToManifest(downloadedSet, url) {
   const dir = path.dirname(MANIFEST_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(MANIFEST_FILE, JSON.stringify([...downloadedSet], null, 2));
-}
-
-// ============================================================
-//  Caption Extraction (cải thiện)
-// ============================================================
-
-/**
- * Trích xuất caption từ trang Facebook mobile.
- * Thử nhiều phương pháp theo thứ tự ưu tiên.
- */
-async function extractCaption(page) {
-  return await page.evaluate(() => {
-    // 1. Thử lấy từ meta tags (đáng tin nhất)
-    const ogDesc = document.querySelector('meta[property="og:description"]');
-    if (ogDesc && ogDesc.content && ogDesc.content.length > 5) return ogDesc.content;
-
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc && metaDesc.content && metaDesc.content.length > 5) return metaDesc.content;
-
-    // 2. Thử aria-label
-    const ariaLabel = document.querySelector('[aria-label*="caption"], [aria-label*="mô tả"]');
-    if (ariaLabel) {
-      const text = ariaLabel.getAttribute("aria-label");
-      if (text && text.length > 5) return text;
-    }
-
-    // 3. Tìm text element dài nhất — lọc bỏ noise
-    const NOISE_PATTERNS = /^(like|comment|share|follow|xem thêm|see more|đăng nhập|log in|sign up|menu|home)/i;
-    const textElements = Array.from(document.querySelectorAll("span, div, p")).filter((el) => {
-      const style = window.getComputedStyle(el);
-      const text = el.innerText?.trim() || "";
-      return (
-        style.display !== "none" &&
-        text.length > 10 &&
-        el.childElementCount === 0 &&
-        !NOISE_PATTERNS.test(text) &&
-        !el.closest("nav, header, footer, [role='navigation'], [role='banner']")
-      );
-    });
-
-    const sorted = textElements.sort((a, b) => b.innerText.length - a.innerText.length);
-    if (sorted.length > 0) {
-      const caption = sorted[0].innerText.trim();
-      // Giới hạn 2000 ký tự để tránh lấy nhầm DOM quá dài
-      return caption.length > 2000 ? caption.substring(0, 2000) : caption;
-    }
-
-    return "";
-  });
 }
 
 // ============================================================
@@ -485,7 +444,14 @@ async function handleDownload(inputUrl) {
 // ============================================================
 
 validateConfig();
-handleDownload(targetUrl).catch((e) => {
-  console.error("❌ Lỗi nghiêm trọng:", e);
-  process.exit(1);
-});
+if (isPhotoMode) {
+  handlePhotoDownload(targetUrl, { headless, noClose, isRewriteMode }).catch((e) => {
+    console.error("❌ Lỗi nghiêm trọng:", e);
+    process.exit(1);
+  });
+} else {
+  handleDownload(targetUrl).catch((e) => {
+    console.error("❌ Lỗi nghiêm trọng:", e);
+    process.exit(1);
+  });
+}
