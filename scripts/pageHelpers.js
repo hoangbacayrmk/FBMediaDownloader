@@ -1,5 +1,5 @@
 // ============================================================
-//  Page Helpers dùng chung cho cả chế độ tải Reels và tải Ảnh
+//  Page Helpers dùng chung cho chế độ tải Reels
 // ============================================================
 
 /**
@@ -45,52 +45,4 @@ export async function extractCaption(page) {
 
     return "";
   });
-}
-
-/**
- * Trích xuất danh sách URL ảnh nội dung trong 1 bài viết (bỏ avatar/icon/emoji tĩnh).
- */
-export async function extractPostImages(page) {
-  return await page.evaluate(() => {
-    const imgs = Array.from(document.querySelectorAll("img"));
-    const seen = new Set();
-    const results = [];
-    for (const img of imgs) {
-      const src = img.src;
-      if (!src || !src.startsWith("https")) continue;
-      // Ảnh nội dung Facebook luôn nằm trên host "scontent"
-      if (!/scontent/i.test(src)) continue;
-      const w = img.naturalWidth || img.width || 0;
-      const h = img.naturalHeight || img.height || 0;
-      if (w < 150 || h < 150) continue; // bỏ avatar/icon/emoji nhỏ
-      if (img.closest('header, nav, [role="banner"], [role="navigation"]')) continue;
-      const clean = src.split("?")[0];
-      if (seen.has(clean)) continue;
-      seen.add(clean);
-      results.push(src);
-    }
-    return results;
-  });
-}
-
-/**
- * Rút gọn 1 id định danh bài viết từ URL Facebook (dùng để đặt tên thư mục/file).
- */
-export function extractPostId(url) {
-  try {
-    const u = new URL(url);
-    const storyFbid = u.searchParams.get("story_fbid") || u.searchParams.get("fbid");
-    if (storyFbid) return storyFbid;
-
-    const parts = u.pathname.split("/").filter(Boolean);
-    const postsIdx = parts.indexOf("posts");
-    if (postsIdx !== -1 && parts[postsIdx + 1]) return parts[postsIdx + 1];
-
-    const photosIdx = parts.indexOf("photos");
-    if (photosIdx !== -1 && parts[parts.length - 1]) return parts[parts.length - 1];
-
-    return parts[parts.length - 1] || null;
-  } catch {
-    return null;
-  }
 }

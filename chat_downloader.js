@@ -11,7 +11,6 @@ import { launchBrowser, registerGracefulShutdown } from "./scripts/browser_confi
 import { ensureLoggedIn } from "./scripts/auto_login.js";
 import { ensureYtDlp } from "./scripts/download_music.js";
 import { extractCaption } from "./scripts/pageHelpers.js";
-import { handlePhotoDownload } from "./Skill/photoDownloader.js";
 
 dotenv.config();
 
@@ -48,17 +47,13 @@ function showHelp() {
 📥 Tải 1 video:
   node chat_downloader.js --url "https://www.facebook.com/reel/123..."
 
-📂 Tải hàng loạt Reels (từ Profile/Page):
+📂 Tải hàng loạt (từ Profile/Page):
   node chat_downloader.js --url "https://www.facebook.com/pagename"
-
-🖼️ Tải hàng loạt bài viết ẢNH (từ Profile/Page, chế độ song song với Reels):
-  node chat_downloader.js --url "https://www.facebook.com/pagename" --photos
 
 🎬 Tùy chọn:
   --url <link>          Link Facebook (bắt buộc)
-  --photos              Chuyển sang chế độ quét & tải bài viết ẢNH thay vì Reels
-  --edit                Tự động cắt đầu/cuối video (chỉ áp dụng chế độ Reels)
-  --music               Ghép ngẫu nhiên nhạc trẻ không bản quyền thay âm gốc (chỉ Reels)
+  --edit                Tự động cắt đầu/cuối video
+  --music               Ghép ngẫu nhiên nhạc trẻ không bản quyền thay âm gốc
   --rewrite             Viết lại caption bằng Gemini AI
   --upload <page_id>    (Tạm tắt) ID Fanpage để upload
   --trim-start <giây>   Số giây cắt đầu (mặc định: ${process.env.DEFAULT_TRIM_START || 1})
@@ -69,7 +64,6 @@ function showHelp() {
 
 💡 Kết hợp nhiều tùy chọn:
   node chat_downloader.js --url "LINK" --edit --rewrite --trim-start 2
-  node chat_downloader.js --url "LINK" --photos --rewrite
 `);
 }
 
@@ -85,7 +79,6 @@ const targetUrl     = params["url"] || null;
 const isEditMode    = flags.has("edit");
 const isRewriteMode = flags.has("rewrite");
 const isMusicMode   = flags.has("music");
-const isPhotoMode   = flags.has("photos");
 const uploadPageName = params["upload"] || null;
 const noClose       = flags.has("no-close");
 const headless      = flags.has("headless");
@@ -378,16 +371,21 @@ async function handleDownload(inputUrl) {
       if (reelLinks.size > 0 && reelLinks.size === previousSize && i > 5) break;
       previousSize = reelLinks.size;
       
-      // 🛡️ ANTI-BAN: Scroll mượt mà (Smooth Scroll) giống người thật, thay vì giật cục xuống cuối
+      // 🛡️ ANTI-BAN: Scroll mượt mà (Smooth Scroll) giống người thật, thay vì giật cục xuống cuối.
+      // Giới hạn số bước tối đa vì trang infinite-scroll có thể khiến scrollHeight phình liên tục
+      // và làm vòng lặp không bao giờ dừng, treo page.evaluate() tới khi Puppeteer timeout.
       await page.evaluate(async () => {
         await new Promise((resolve) => {
           let totalHeight = 0;
+          let steps = 0;
+          const MAX_STEPS = 60;
           const distance = Math.floor(Math.random() * 100) + 100; // Random khoảng cách cuộn
           const timer = setInterval(() => {
             const scrollHeight = document.body.scrollHeight;
             window.scrollBy(0, distance);
             totalHeight += distance;
-            if (totalHeight >= scrollHeight) {
+            steps++;
+            if (totalHeight >= scrollHeight || steps >= MAX_STEPS) {
               clearInterval(timer);
               resolve();
             }
@@ -478,14 +476,7 @@ async function handleDownload(inputUrl) {
 // ============================================================
 
 validateConfig();
-if (isPhotoMode) {
-  handlePhotoDownload(targetUrl, { headless, noClose, isRewriteMode }).catch((e) => {
-    console.error("❌ Lỗi nghiêm trọng:", e);
-    process.exit(1);
-  });
-} else {
-  handleDownload(targetUrl).catch((e) => {
-    console.error("❌ Lỗi nghiêm trọng:", e);
-    process.exit(1);
-  });
-}
+handleDownload(targetUrl).catch((e) => {
+  console.error("❌ Lỗi nghiêm trọng:", e);
+  process.exit(1);
+});
