@@ -270,6 +270,7 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
             trimStart, // Lấy từ --trim-start hoặc .env
             trimEnd, // Lấy từ --trim-end hoặc .env
             deleteOriginal: true,
+            keepAudio: true, // 🛡️ Giữ nguyên âm thanh gốc khi cắt ghép nếu không ghép nhạc mới
             addMusic: isMusicMode,
             musicFilePath: downloadedMusicPath
           });
@@ -320,6 +321,18 @@ async function handleDownload(inputUrl) {
   // Đảm bảo đã đăng nhập trước khi tải (sẽ tự động đăng nhập nếu chưa)
   await ensureLoggedIn(page);
 
+  // 🛡️ BẬT CHẾ ĐỘ ANTI-BAN VÀ TỐI ƯU RAM (Chặn tải ảnh, video preview, font)
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    // Chỉ chặn ảnh, media, font. Cho phép css, js, html để FB không nghi ngờ
+    const resourceType = req.resourceType();
+    if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+
   // Hiển thị config summary
   console.log("\n╔══════════════════════════════════════════╗");
   console.log("║        FB Media Downloader v1.1          ║");
@@ -364,9 +377,28 @@ async function handleDownload(inputUrl) {
       links.forEach((l) => reelLinks.add(l.split("?")[0])); // Clean URL
       if (reelLinks.size > 0 && reelLinks.size === previousSize && i > 5) break;
       previousSize = reelLinks.size;
-      await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
-      await sleep(3000);
-      process.stdout.write(`\r🔍 Đã tìm thấy: ${reelLinks.size} video...`);
+      
+      // 🛡️ ANTI-BAN: Scroll mượt mà (Smooth Scroll) giống người thật, thay vì giật cục xuống cuối
+      await page.evaluate(async () => {
+        await new Promise((resolve) => {
+          let totalHeight = 0;
+          const distance = Math.floor(Math.random() * 100) + 100; // Random khoảng cách cuộn
+          const timer = setInterval(() => {
+            const scrollHeight = document.body.scrollHeight;
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+            if (totalHeight >= scrollHeight) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, Math.floor(Math.random() * 100) + 50); // Random delay giữa mỗi lần cuộn
+        });
+      });
+      
+      // Random thời gian nghỉ giữa các lần cuộn để chống nhận diện bot
+      const humanDelay = Math.floor(Math.random() * 2000) + 2000;
+      await sleep(humanDelay);
+      process.stdout.write(`\r🔍 Đã tìm thấy: ${reelLinks.size} video... (đang quét như người thật)`);
     }
     process.stdout.write("\n");
     const linksArray = Array.from(reelLinks);
@@ -404,9 +436,11 @@ async function handleDownload(inputUrl) {
       }
       postIndex++;
 
-      // Delay giữa các video (tránh bị Facebook chặn)
+      // Delay ngẫu nhiên giữa các video (chống Bot nhận diện)
       if (postIndex < newLinks.length) {
-        await sleep(downloadDelay);
+        const randomDelay = downloadDelay + Math.floor(Math.random() * 3000); // Thêm 0-3s ngẫu nhiên
+        console.log(`⏳ Đang nghỉ ngơi ${Math.round(randomDelay/1000)}s trước khi tải video tiếp theo...`);
+        await sleep(randomDelay);
       }
     }
 
