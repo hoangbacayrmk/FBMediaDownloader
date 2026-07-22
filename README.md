@@ -7,6 +7,8 @@ Công cụ tự động hóa tải video và Reels từ Facebook kèm tính năn
 - **Lưu nội dung văn bản**: Mỗi video tải về đều kèm theo file `.txt` chứa mô tả (caption).
 - **Tự động cắt ghép (Auto Edit)**: Sử dụng FFmpeg để tự động xử lý video (cắt đầu/đuôi, scale...) ngay sau khi tải.
 - **Trình duyệt thực**: Vượt qua Captcha và bảo mật Facebook dễ dàng.
+- **Chống Bot Detection (Anti-Ban)**: Scroll mượt kiểu người thật (random tốc độ/độ trễ), delay ngẫu nhiên giữa các lượt tải, chặn tải ảnh/media/font khi quét để giảm tải RAM.
+- **Tối ưu CPU**: Preset FFmpeg `ultrafast` giúp xử lý video nhanh hơn, nhẹ máy hơn.
 
 ## 🛠 Cài đặt
 
