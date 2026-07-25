@@ -112,8 +112,8 @@ export const processVideo = async (inputPath, options = {}) => {
       cmd.complexFilter(filters).outputOptions(outputMaps);
 
       // Do dùng complex_filter, BẮT BUỘC phải re-encode video
-      // 🛡️ TỐI ƯU HÓA CPU: Chuyển preset sang 'ultrafast' để giảm tải tối đa cho máy tính
-      cmd.videoCodec("libx264").outputOptions(['-crf', '23', '-preset', 'ultrafast']);
+      // CRF 18 + preset 'medium' giữ chất lượng gần như gốc (ultrafast/crf23 làm video bị mờ/vỡ khối)
+      cmd.videoCodec("libx264").outputOptions(['-crf', '18', '-preset', 'medium']);
 
       // --- CHÈN NHẠC NỀN ---
       let musicPath = null;

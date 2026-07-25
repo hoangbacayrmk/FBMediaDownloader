@@ -11,6 +11,7 @@ import { launchBrowser, registerGracefulShutdown } from "./scripts/browser_confi
 import { ensureLoggedIn } from "./scripts/auto_login.js";
 import { ensureYtDlp } from "./scripts/download_music.js";
 import { extractCaption } from "./scripts/pageHelpers.js";
+import { exportCookiesForYtDlp, downloadVideoWithYtDlp, getResolution } from "./scripts/ytdlp_downloader.js";
 
 dotenv.config();
 
@@ -207,7 +208,7 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
     await page.goto(mobileUrl, { waitUntil: "networkidle2", timeout: 60000 });
     await sleep(6000);
 
-    // Lấy video URL
+    // Lấy video URL (dùng làm phương án dự phòng nếu yt-dlp lỗi)
     const videoUrl = await page.evaluate(() => {
       const html = document.documentElement.innerHTML;
       const hdMatch =
@@ -228,14 +229,29 @@ async function extractAndDownloadMobile(page, url, customSaveDir = SAVE_DIR, pos
     const caption = await extractCaption(page);
 
     if (videoUrl) {
-      console.log(`🔗 Link: ${videoUrl.substring(0, 60)}...`);
       const baseName = `reel_${Date.now()}`;
       const videoFolder = path.join(customSaveDir, baseName);
       createIfNotExistDir(videoFolder);
 
       const videoPath = path.join(videoFolder, `${baseName}.mp4`);
-      // Chạy song song: tải video + viết lại caption + tải nhạc
-      const downloadPromise = download(videoUrl, videoPath);
+
+      // Ưu tiên tải qua yt-dlp (lấy đúng bestvideo+bestaudio, xử lý được DASH),
+      // chỉ rơi về regex-scrape (thường là SD) nếu yt-dlp thất bại.
+      const downloadPromise = (async () => {
+        await ensureYtDlp();
+        const cookiesFile = await exportCookiesForYtDlp(page).catch(() => null);
+        const ytdlpOk = await downloadVideoWithYtDlp(url, videoPath, cookiesFile);
+        if (!ytdlpOk) {
+          console.log("⚠️ yt-dlp không tải được, dùng link scrape dự phòng (có thể là SD)...");
+          console.log(`🔗 Link: ${videoUrl.substring(0, 60)}...`);
+          await download(videoUrl, videoPath);
+        }
+        const res = await getResolution(videoPath);
+        if (res) {
+          const tag = res.height >= 720 ? "✅ HD" : "⚠️ SD (thấp hơn 720p)";
+          console.log(`📐 Độ phân giải thực tế: ${res.width}x${res.height} ${tag}`);
+        }
+      })();
 
       let rewritePromise = Promise.resolve(caption);
       if (caption && caption.length > 3 && isRewriteMode) {
